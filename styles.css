@@ -30,7 +30,7 @@
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --cursor-default: url("./assets/cursor-ditto.png") 1 1, auto;
-  --cursor-pointer: url("./assets/cursor-ditto.png") 1 1, pointer;
+  --cursor-pointer: url("./assets/cursor-ditto-link.png") 1 1, pointer;
 }
 
 html, body { cursor: var(--cursor-default); }
