@@ -66,7 +66,7 @@ button {
   background: none;
   border: 0;
   color: inherit;
-  cursor: pointer;
+  cursor: var(--cursor-pointer);
   padding: 0;
 }
 
@@ -177,7 +177,7 @@ button {
 }
 
 .link-pill[data-empty] {
-  cursor: default;
+  cursor: var(--cursor-default);
   opacity: 0.6;
 }
 
@@ -251,7 +251,7 @@ button {
   gap: 0.5rem;
   color: var(--text-400);
   font-size: 0.78rem;
-  cursor: pointer;
+  cursor: var(--cursor-pointer);
   user-select: none;
 }
 
@@ -259,7 +259,7 @@ button {
   width: 0.95rem;
   height: 0.95rem;
   accent-color: var(--emerald-400);
-  cursor: pointer;
+  cursor: var(--cursor-pointer);
 }
 
 /* Alarm speaker button */
@@ -274,7 +274,7 @@ button {
   background: var(--bg-900);
   color: var(--text-400);
   border-radius: 4px;
-  cursor: pointer;
+  cursor: var(--cursor-pointer);
   transition: border-color 0.15s, color 0.15s, background 0.15s, transform 0.1s;
 }
 
@@ -434,7 +434,7 @@ button {
 .grid td.text-right { text-align: right; }
 
 .grid th.sortable {
-  cursor: pointer;
+  cursor: var(--cursor-pointer);
   user-select: none;
   transition: color 0.15s;
 }
@@ -650,7 +650,7 @@ button {
   font-size: 0.65rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  cursor: pointer;
+  cursor: var(--cursor-pointer);
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 .row-expander:hover {
