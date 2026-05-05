@@ -1,4 +1,6 @@
 import json
+import re
+import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -10,21 +12,43 @@ PORT = 8000
 ROOT = Path(__file__).resolve().parent
 
 CLAWS_URL = "https://beezie-giyu.vercel.app/api/claws"
+PHYGITALS_URL = "https://www.phygitals.com/claw/rookie-pack"
+NEXT_DATA_RE = re.compile(
+    r'<script id="__NEXT_DATA__" type="application/json">([\s\S]*?)</script>'
+)
 
 
-def fetch_remote(url):
+def fetch_remote(url, accept="application/json"):
     request = Request(
         url,
         headers={
-            "User-Agent": "Mozilla/5.0 (compatible; BeezieEvMirror/1.0)",
-            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (compatible; metamongEV/1.0)",
+            "Accept": accept,
         },
     )
     with urlopen(request, timeout=20) as response:
         return response.status, response.read()
 
 
-class BeezieHandler(SimpleHTTPRequestHandler):
+def build_phygitals_payload():
+    status, body = fetch_remote(PHYGITALS_URL, accept="text/html,application/xhtml+xml")
+    if status != 200:
+        return status, json.dumps({"error": "upstream_http_error", "status": status}).encode("utf-8")
+    html = body.decode("utf-8", errors="replace")
+    m = NEXT_DATA_RE.search(html)
+    if not m:
+        return 502, json.dumps({"error": "next_data_not_found"}).encode("utf-8")
+    data = json.loads(m.group(1))
+    all_claws = data.get("props", {}).get("pageProps", {}).get("allClaws", []) or []
+    packs = [
+        c for c in all_claws
+        if c.get("category") == "pokemon"
+        or "pokemon" in (c.get("categories") or [])
+    ]
+    return 200, json.dumps({"packs": packs, "timestamp": int(time.time() * 1000)}).encode("utf-8")
+
+
+class MetamongHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
@@ -33,11 +57,14 @@ class BeezieHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/claws":
             self.proxy(CLAWS_URL)
             return
+        if parsed.path == "/api/phygitals":
+            self.proxy_phygitals()
+            return
         super().do_GET()
 
     def do_HEAD(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/api/claws":
+        if parsed.path in ("/api/claws", "/api/phygitals"):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-store")
@@ -46,30 +73,7 @@ class BeezieHandler(SimpleHTTPRequestHandler):
             return
         super().do_HEAD()
 
-    def proxy(self, url):
-        try:
-            status, payload = fetch_remote(url)
-        except HTTPError as error:
-            payload = error.read() if error.fp else b""
-            self.send_response(error.code)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
-            return
-        except URLError as error:
-            body = json.dumps({"error": "upstream_unreachable", "message": str(error.reason)}).encode("utf-8")
-            self.send_response(502)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-
+    def _send_json(self, status, payload):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
@@ -78,10 +82,36 @@ class BeezieHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def proxy(self, url):
+        try:
+            status, payload = fetch_remote(url)
+        except HTTPError as error:
+            payload = error.read() if error.fp else b""
+            self._send_json(error.code, payload)
+            return
+        except URLError as error:
+            body = json.dumps({"error": "upstream_unreachable", "message": str(error.reason)}).encode("utf-8")
+            self._send_json(502, body)
+            return
+        self._send_json(status, payload)
+
+    def proxy_phygitals(self):
+        try:
+            status, payload = build_phygitals_payload()
+            self._send_json(status, payload)
+        except HTTPError as error:
+            payload = json.dumps({"error": "upstream_http_error", "status": error.code}).encode("utf-8")
+            self._send_json(error.code, payload)
+        except URLError as error:
+            body = json.dumps({"error": "upstream_unreachable", "message": str(error.reason)}).encode("utf-8")
+            self._send_json(502, body)
+        except (ValueError, KeyError) as error:
+            self._send_json(502, json.dumps({"error": "parse_failed", "message": str(error)}).encode("utf-8"))
+
 
 def main():
-    server = ThreadingHTTPServer((HOST, PORT), BeezieHandler)
-    print(f"Beezie EV mirror running at http://{HOST}:{PORT}")
+    server = ThreadingHTTPServer((HOST, PORT), MetamongHandler)
+    print(f"metamongEV running at http://{HOST}:{PORT}")
     server.serve_forever()
 
 

@@ -760,11 +760,39 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.tier-grail  { color: var(--gold-300);    border-color: rgba(234, 179, 8, 0.45); background: rgba(234, 179, 8, 0.08); }
-.tier-high   { color: var(--emerald-300); border-color: rgba(52, 211, 153, 0.4); background: rgba(52, 211, 153, 0.07); }
-.tier-medium { color: var(--text-300);    border-color: var(--border-700); }
-.tier-low    { color: var(--text-400);    border-color: var(--border-800); }
-.tier-base   { color: var(--text-500);    border-color: var(--border-800); }
+.tier-grail   { color: var(--gold-300);    border-color: rgba(234, 179, 8, 0.45); background: rgba(234, 179, 8, 0.08); }
+.tier-high    { color: var(--emerald-300); border-color: rgba(52, 211, 153, 0.4); background: rgba(52, 211, 153, 0.07); }
+.tier-medium  { color: var(--text-300);    border-color: var(--border-700); }
+.tier-low     { color: var(--text-400);    border-color: var(--border-800); }
+.tier-base    { color: var(--text-500);    border-color: var(--border-800); }
+/* Phygitals rarity tiers */
+.tier-mythic  { color: #fcd34d;            border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.08); }
+.tier-epic    { color: #fda4af;            border-color: rgba(239, 68, 68, 0.45);  background: rgba(239, 68, 68, 0.07); }
+.tier-rare    { color: #c4b5fd;            border-color: rgba(168, 85, 247, 0.45); background: rgba(168, 85, 247, 0.08); }
+.tier-uncommon{ color: #93c5fd;            border-color: rgba(59, 130, 246, 0.4);  background: rgba(59, 130, 246, 0.07); }
+.tier-common  { color: var(--emerald-300); border-color: rgba(34, 197, 94, 0.4);   background: rgba(34, 197, 94, 0.07); }
+
+.tier-swatch {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  margin-right: 0.35rem;
+  vertical-align: middle;
+  border: 1px solid rgba(0, 0, 0, 0.45);
+}
+
+/* Per-provider chip variants */
+.provider-chip--beezie {
+  border-color: rgba(234, 179, 8, 0.45);
+  color: var(--gold-300);
+  background: rgba(234, 179, 8, 0.08);
+}
+.provider-chip--phygitals {
+  border-color: rgba(168, 85, 247, 0.45);
+  color: #c4b5fd;
+  background: rgba(168, 85, 247, 0.08);
+}
 
 .grails-tree__empty {
   font-style: italic;

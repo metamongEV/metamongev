@@ -1,7 +1,10 @@
-/* metamongEV — Beezie EV mirror.
-   Math is a 1:1 port of beezie-giyu.vercel.app's a(e) helper. */
+/* metamongEV — multi-provider EV mirror.
+   - Beezie math is a 1:1 port of beezie-giyu.vercel.app's a(e) helper.
+   - Phygitals math reuses the same BEP framing (price ÷ buyback) so the columns
+     mean the same thing across providers. */
 
 const CLAWS_URL = "/api/claws";
+const PHYGITALS_URL = "/api/phygitals";
 const REFRESH_INTERVAL_MS = 10_000;
 const COUNTDOWN_TICK_MS = 1_000;
 
@@ -83,42 +86,114 @@ function bep(priceUsdc) {
   return BEP_TABLE[priceUsdc] ?? Math.ceil(1.14 * priceUsdc);
 }
 
-function packStats(claw) {
+/* ---------- normalizers — fold each provider's raw record into one shape ---------- */
+
+function normalizeBeezie(claw) {
   const stock = claw.clawStockCount;
   const price = claw.priceUsdc;
+  const fee = claw.swapFees?.percentages?.[0];
+  const adjBuyback = 90 * (1 - (Number.isFinite(fee) ? fee / 100 : 0));
+
+  let stats;
   if (!stock) {
-    return {
-      ev: 0, displayAvg: 0, evPercent: 0, threshold: bep(price),
-      pullsToPositiveEV: null, progressPercent: 0,
+    stats = { ev: 0, displayAvg: 0, evPercent: 0, threshold: bep(price),
+              pullsToPositiveEV: null, pullsApplicable: false, progressPercent: 0 };
+  } else {
+    const displayAvg = claw.totalSwapValue / stock / 0.9;
+    const threshold = bep(price);
+    const ev = displayAvg - threshold;
+    const totalAdj = claw.totalSwapValue / 0.9;
+    const baseMid = (claw.priceRanges.fromBase + claw.priceRanges.toBase) / 2 * 1e6 / 0.9;
+    const surplus = totalAdj - threshold * stock;
+    const baseGap = baseMid - threshold;
+
+    let pullsToPositiveEV = null;
+    if (baseGap < 0 && surplus < 0) {
+      const x = Math.round((surplus / baseGap) * 100) / 100;
+      if (x > 0 && x < stock) pullsToPositiveEV = x;
+    }
+    let progressPercent = 0;
+    if (ev >= 0) progressPercent = 100;
+    else if (pullsToPositiveEV != null) {
+      progressPercent = Math.max(0, Math.min(99, ((stock - pullsToPositiveEV) / stock) * 100));
+    }
+
+    stats = {
+      ev, displayAvg, threshold, pullsToPositiveEV, progressPercent,
+      pullsApplicable: true,
+      evPercent: ev / threshold * 100,
     };
   }
-  const displayAvg = claw.totalSwapValue / stock / 0.9;
-  const threshold = bep(price);
-  const ev = displayAvg - threshold;
-  const totalAdj = claw.totalSwapValue / 0.9;
-  const baseMid = (claw.priceRanges.fromBase + claw.priceRanges.toBase) / 2 * 1e6 / 0.9;
-  const surplus = totalAdj - threshold * stock;
-  const baseGap = baseMid - threshold;
 
-  let pullsToPositiveEV = null;
-  if (baseGap < 0 && surplus < 0) {
-    const x = Math.round((surplus / baseGap) * 100) / 100;
-    if (x > 0 && x < stock) pullsToPositiveEV = x;
-  }
-
-  let progressPercent = 0;
-  if (ev >= 0) progressPercent = 100;
-  else if (pullsToPositiveEV != null) {
-    progressPercent = Math.max(0, Math.min(99, ((stock - pullsToPositiveEV) / stock) * 100));
-  }
-
-  return { ev, displayAvg, evPercent: ev / threshold * 100, threshold, pullsToPositiveEV, progressPercent };
+  return {
+    provider: "beezie",
+    providerLabel: "Beezie",
+    id: `beezie:${claw.id}`,
+    name: claw.name,
+    active: claw.status === "active" && !!stock,
+    statusLabel: claw.status,
+    priceMicroUsdc: price,
+    adjBuybackPct: adjBuyback,
+    itemCount: stock ?? null,
+    itemCountLabel: "stock",
+    _stats: stats,
+    expansion: {
+      kind: "grails",
+      label: "top 10 cards",
+      items: claw.topGrails || [],
+    },
+  };
 }
 
-function adjustedBuybackPct(claw) {
-  const fee = claw.swapFees?.percentages?.[0];
-  const feeFrac = Number.isFinite(fee) ? fee / 100 : 0;
-  return 90 * (1 - feeFrac);
+function normalizePhygitals(raw) {
+  const priceUsd = parseFloat(raw.mint_price);                  // raw is dollars (string)
+  const buybackFrac = Number.isFinite(raw.buyback_percent) ? raw.buyback_percent : null;
+  const evUsd = Number.isFinite(raw.ev) ? raw.ev : null;
+  const priceMicro = Number.isFinite(priceUsd) ? priceUsd * 1e6 : null;
+
+  // Phygitals doesn't expose a per-pack BEP table, so apply Beezie's framing:
+  // BEP = price ÷ buyback_percent. (e.g. $25 / 0.85 ≈ $29.41)
+  let stats;
+  if (priceMicro == null || buybackFrac == null || evUsd == null || buybackFrac <= 0) {
+    stats = { ev: 0, displayAvg: 0, evPercent: 0, threshold: priceMicro ?? 0,
+              pullsToPositiveEV: null, pullsApplicable: false, progressPercent: 0 };
+  } else {
+    const displayAvg = evUsd * 1e6;
+    const threshold = (priceUsd / buybackFrac) * 1e6;
+    const ev = displayAvg - threshold;
+    const evPercent = ev / threshold * 100;
+
+    // Pulls-to-+EV doesn't apply to Phygitals: rarity weights are fixed,
+    // so the pool's expected value doesn't shift with each pull.
+    // Progress = how close current EV% is to break-even (linear: -20% → 0%, 0% → 100%).
+    let progressPercent;
+    if (evPercent >= 0) progressPercent = 100;
+    else progressPercent = Math.max(0, Math.min(99, 100 + evPercent * 5));
+
+    stats = {
+      ev, displayAvg, threshold, evPercent,
+      pullsToPositiveEV: null, pullsApplicable: false, progressPercent,
+    };
+  }
+
+  return {
+    provider: "phygitals",
+    providerLabel: "Phygital",
+    id: `phygitals:${raw.id}`,
+    name: raw.name,
+    active: raw.in_stock === true && raw.enable === true,
+    statusLabel: raw.in_stock ? null : "out of stock",
+    priceMicroUsdc: priceMicro,
+    adjBuybackPct: buybackFrac != null ? buybackFrac * 100 : null,
+    itemCount: Number.isFinite(raw.num_pulls_7d) ? raw.num_pulls_7d : null,
+    itemCountLabel: "7d pulls",
+    _stats: stats,
+    expansion: {
+      kind: "tiers",
+      label: "rarity tiers",
+      items: Array.isArray(raw.rarity_distribution) ? raw.rarity_distribution : [],
+    },
+  };
 }
 
 /* Color classes for %EV and $EV cells.
@@ -205,8 +280,8 @@ function evaluateAlarm() {
   }
   let firing = false;
   for (const pack of state.packs) {
-    const id = String(pack.id);
-    if (pack.status === "active" && pack._stats.ev > 0) {
+    const id = pack.id;
+    if (pack.active && pack._stats.ev > 0) {
       firing = true;
       if (!state.alarmedPacks.has(id)) {
         playBell();
@@ -224,26 +299,30 @@ function evaluateAlarm() {
 
 function packRowHtml(pack) {
   const stats = pack._stats;
-  const isExpanded = state.expanded.has(String(pack.id));
+  const isExpanded = state.expanded.has(pack.id);
   const evColor = evColorClass(stats.evPercent);
-  const restocking = pack.status !== "active" || !pack.clawStockCount;
-  const positive = stats.ev > 0 && !restocking;
+  const inactive = !pack.active;
+  const positive = stats.ev > 0 && !inactive;
 
-  const buttonText = isExpanded ? "Hide top 10 cards" : "Show top 10 cards";
+  const expandLabel = pack.expansion?.label || "details";
+  const buttonText = isExpanded ? `Hide ${expandLabel}` : `Show ${expandLabel}`;
+  const pullsText = stats.pullsApplicable ? formatPulls(stats.pullsToPositiveEV) : "—";
   const progressLabel = stats.ev >= 0 ? "+EV" : `${stats.progressPercent.toFixed(0)}%`;
+  const itemsText = pack.itemCount != null ? formatInt(pack.itemCount) : "—";
+  const buybackText = pack.adjBuybackPct != null ? `${pack.adjBuybackPct.toFixed(1)}%` : "—";
 
   return `
-    <tr class="row-pack ${restocking ? "row-closed" : ""} ${positive ? "row-pack--positive" : ""}" data-pack-id="${pack.id}">
+    <tr class="row-pack row-pack--${pack.provider} ${inactive ? "row-closed" : ""} ${positive ? "row-pack--positive" : ""}" data-pack-id="${escapeAttr(pack.id)}">
       <td class="text-left col-pack">
         <div class="pack-cell">
           <div class="pack-cell__line">
-            <span class="provider-chip">Beezie</span>
+            <span class="provider-chip provider-chip--${pack.provider}">${escapeHtml(pack.providerLabel)}</span>
             <span class="pack-name">${escapeHtml(pack.name)}</span>
-            ${restocking ? `<span class="status-pill">${escapeHtml(pack.status || "restocking")}</span>` : ""}
+            ${inactive ? `<span class="status-pill">${escapeHtml(pack.statusLabel || "inactive")}</span>` : ""}
           </div>
-          <button class="row-expander" type="button" data-pack-id="${pack.id}" aria-expanded="${isExpanded}">
+          <button class="row-expander" type="button" data-pack-id="${escapeAttr(pack.id)}" aria-expanded="${isExpanded}">
             <span class="row-expander__caret">${isExpanded ? "▾" : "▸"}</span>
-            <span>${buttonText}</span>
+            <span>${escapeHtml(buttonText)}</span>
           </button>
         </div>
       </td>
@@ -257,30 +336,37 @@ function packRowHtml(pack) {
           <span class="progress-cell__label">${progressLabel}</span>
         </div>
       </td>
-      <td class="text-right col-pulls">${formatPulls(stats.pullsToPositiveEV)}</td>
+      <td class="text-right col-pulls">${pullsText}</td>
       <td class="text-right">${formatUsd(stats.displayAvg, 2)}</td>
       <td class="text-right ${evColor}">${formatPctSigned(stats.evPercent, 2)}</td>
       <td class="text-right ${evColor}">${formatUsdSigned(stats.ev, 2)}</td>
       <td class="text-right">${formatUsd(stats.threshold, 2)}</td>
-      <td class="text-right">${formatUsd(pack.priceUsdc, 0)}</td>
-      <td class="text-right">${adjustedBuybackPct(pack).toFixed(1)}%</td>
-      <td class="text-right">${formatInt(pack.clawStockCount)}</td>
+      <td class="text-right">${formatUsd(pack.priceMicroUsdc, 0)}</td>
+      <td class="text-right" title="${escapeAttr(pack.adjBuybackPct != null ? `${pack.providerLabel} buyback (post-fee)` : "n/a")}">${buybackText}</td>
+      <td class="text-right" title="${escapeAttr(pack.itemCountLabel)}">${itemsText}</td>
     </tr>
-    ${isExpanded ? grailRowsHtml(pack) : ""}
+    ${isExpanded ? expansionRowsHtml(pack) : ""}
   `;
 }
 
+function expansionRowsHtml(pack) {
+  if (pack.expansion?.kind === "tiers") return tierRowsHtml(pack);
+  return grailRowsHtml(pack);
+}
+
+function emptyExpansionRow(pack, message) {
+  return `
+    <tr class="row-grails-empty" data-pack-id="${escapeAttr(pack.id)}">
+      <td colspan="10"><div class="grails-tree"><div class="grails-tree__empty">${escapeHtml(message)}</div></div></td>
+    </tr>`;
+}
+
 function grailRowsHtml(pack) {
-  const grails = pack.topGrails || [];
-  if (!grails.length) {
-    return `
-      <tr class="row-grails-empty" data-pack-id="${pack.id}">
-        <td colspan="10"><div class="grails-tree"><div class="grails-tree__empty">No top grails reported by upstream.</div></div></td>
-      </tr>`;
-  }
+  const grails = pack.expansion?.items || [];
+  if (!grails.length) return emptyExpansionRow(pack, "No top grails reported by upstream.");
 
   const headerRow = `
-    <tr class="row-grails-head" data-pack-id="${pack.id}">
+    <tr class="row-grails-head" data-pack-id="${escapeAttr(pack.id)}">
       <td colspan="10">
         <div class="grails-tree">
           <div class="grail-row grail-row--head">
@@ -299,7 +385,7 @@ function grailRowsHtml(pack) {
     const name = g.name || `#${g.tokenId}`;
     const isLast = idx === grails.length - 1;
     return `
-      <tr class="row-grail" data-pack-id="${pack.id}">
+      <tr class="row-grail" data-pack-id="${escapeAttr(pack.id)}">
         <td colspan="10">
           <div class="grails-tree">
             <div class="grail-row ${isLast ? "grail-row--last" : ""}">
@@ -317,6 +403,60 @@ function grailRowsHtml(pack) {
   }).join("");
 
   return headerRow + tokenRows;
+}
+
+function tierRowsHtml(pack) {
+  const tiers = pack.expansion?.items || [];
+  if (!tiers.length) return emptyExpansionRow(pack, "No rarity tiers reported by upstream.");
+
+  // Sort tiers descending by upper bound so the rarest sits first.
+  const sorted = [...tiers].sort((a, b) => (b.upper ?? 0) - (a.upper ?? 0));
+
+  const headerRow = `
+    <tr class="row-grails-head" data-pack-id="${escapeAttr(pack.id)}">
+      <td colspan="10">
+        <div class="grails-tree">
+          <div class="grail-row grail-row--head">
+            <span class="grail-col grail-col--rank">#</span>
+            <span class="grail-col grail-col--tier">Tier</span>
+            <span class="grail-col grail-col--name">Pull odds</span>
+            <span class="grail-col grail-col--token text-right">Range</span>
+            <span class="grail-col grail-col--swap text-right">Mid</span>
+          </div>
+        </div>
+      </td>
+    </tr>`;
+
+  const rows = sorted.map((t, idx) => {
+    const isLast = idx === sorted.length - 1;
+    const lower = Number.isFinite(t.lower) ? t.lower : 0;
+    const upper = Number.isFinite(t.upper) ? t.upper : 0;
+    const weight = Number.isFinite(t.weight) ? t.weight : 0;
+    const mid = (lower + upper) / 2;
+    const tierKey = (t.name || "").toLowerCase();
+    const swatch = t.color
+      ? `<span class="tier-swatch" style="background:${escapeAttr(t.color)}"></span>`
+      : "";
+    const fmtUsdInline = (v) => `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+    return `
+      <tr class="row-grail" data-pack-id="${escapeAttr(pack.id)}">
+        <td colspan="10">
+          <div class="grails-tree">
+            <div class="grail-row ${isLast ? "grail-row--last" : ""}">
+              <span class="grail-col grail-col--rank">${idx + 1}</span>
+              <span class="grail-col grail-col--tier">
+                <span class="grail__tier ${tierClass(tierKey)}">${swatch}${escapeHtml(t.name || "—")}</span>
+              </span>
+              <span class="grail-col grail-col--name">${weight.toFixed(2)}%</span>
+              <span class="grail-col grail-col--token text-right">${fmtUsdInline(lower)}–${fmtUsdInline(upper)}</span>
+              <span class="grail-col grail-col--swap text-right">${fmtUsdInline(mid)}</span>
+            </div>
+          </div>
+        </td>
+      </tr>`;
+  }).join("");
+
+  return headerRow + rows;
 }
 
 function renderTable() {
@@ -341,38 +481,66 @@ els.rows.addEventListener("click", (event) => {
 
 /* ---------- data fetch ---------- */
 
+async function fetchJson(url) {
+  const resp = await fetch(url, { cache: "no-store" });
+  if (!resp.ok) throw new Error(`${url} HTTP ${resp.status}`);
+  return await resp.json();
+}
+
 async function refresh() {
   els.dataState.textContent = "fetching…";
-  let payload;
-  try {
-    const resp = await fetch(CLAWS_URL, { cache: "no-store" });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    payload = await resp.json();
-  } catch (err) {
-    els.dataState.textContent = `offline (${err.message || err})`;
+  const [beezieRes, phygitalsRes] = await Promise.allSettled([
+    fetchJson(CLAWS_URL),
+    fetchJson(PHYGITALS_URL),
+  ]);
+
+  const beeziePacks = beezieRes.status === "fulfilled"
+    ? (beezieRes.value?.claws || []).map(normalizeBeezie)
+    : [];
+  const phygitalsPacks = phygitalsRes.status === "fulfilled"
+    ? (phygitalsRes.value?.packs || []).map(normalizePhygitals)
+    : [];
+
+  // Beezie first (matches the curated 4-pack ordering), then Phygitals sorted by price asc.
+  phygitalsPacks.sort((a, b) => (a.priceMicroUsdc ?? 0) - (b.priceMicroUsdc ?? 0));
+  const packs = [...beeziePacks, ...phygitalsPacks];
+
+  if (!packs.length) {
+    const reason = [
+      beezieRes.status === "rejected" ? "beezie down" : null,
+      phygitalsRes.status === "rejected" ? "phygitals down" : null,
+    ].filter(Boolean).join(", ") || "no data";
+    els.dataState.textContent = `offline · ${reason}`;
     if (!state.packs.length) {
-      els.rows.innerHTML = `<tr class="row-error"><td colspan="10">Failed to fetch /api/claws. Retrying in 10s…</td></tr>`;
+      els.rows.innerHTML = `<tr class="row-error"><td colspan="10">Failed to fetch upstream feeds. Retrying in 10s…</td></tr>`;
     }
     return;
   }
 
-  const claws = Array.isArray(payload?.claws) ? payload.claws : [];
-  const known = new Set(claws.map((c) => String(c.id)));
-
-  if (!state.defaultExpanded && claws.length) {
-    for (const c of claws) state.expanded.add(String(c.id));
+  // First successful load: auto-expand every pack so the grails/tiers are immediately visible.
+  if (!state.defaultExpanded) {
+    for (const p of packs) state.expanded.add(p.id);
     state.defaultExpanded = true;
   }
+  // Drop expanded entries for packs that disappeared.
+  const known = new Set(packs.map((p) => p.id));
   for (const id of [...state.expanded]) if (!known.has(id)) state.expanded.delete(id);
 
-  for (const c of claws) c._stats = packStats(c);
-  state.packs = claws;
+  state.packs = packs;
 
-  state.lastSyncMs = payload?.timestamp ?? Date.now();
+  const ts = Math.max(
+    beezieRes.status === "fulfilled" ? (beezieRes.value?.timestamp ?? 0) : 0,
+    phygitalsRes.status === "fulfilled" ? (phygitalsRes.value?.timestamp ?? 0) : 0,
+  );
+  state.lastSyncMs = ts || Date.now();
   els.lastSync.textContent = new Date(state.lastSyncMs).toLocaleTimeString([], {
     hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
-  els.dataState.textContent = `live · ${claws.length} pack${claws.length === 1 ? "" : "s"}`;
+
+  const partial = beezieRes.status !== "fulfilled" || phygitalsRes.status !== "fulfilled";
+  els.dataState.textContent = partial
+    ? `live · ${packs.length} pack${packs.length === 1 ? "" : "s"} · partial`
+    : `live · ${packs.length} pack${packs.length === 1 ? "" : "s"}`;
 
   renderTable();
   evaluateAlarm();
