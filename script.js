@@ -577,6 +577,55 @@ if (els.alarmToggle) {
   syncAlarmUi();
 }
 
+/* ---------- animated Ditto cursors ---------- */
+/* Native frame rates from the .ani files: Normal=216ms x 2 frames,
+   Link=133ms x 8 frames. CSS doesn't animate cursors, so we swap the
+   --cursor-default / --cursor-pointer custom properties on the root
+   element at those intervals; the rules in styles.css that reference
+   them pick up the new value immediately. */
+
+const CURSOR_NORMAL_FRAMES = [
+  "./assets/cursor-ditto-0.png",
+  "./assets/cursor-ditto-1.png",
+];
+const CURSOR_LINK_FRAMES = [
+  "./assets/cursor-ditto-link-0.png",
+  "./assets/cursor-ditto-link-1.png",
+  "./assets/cursor-ditto-link-2.png",
+  "./assets/cursor-ditto-link-3.png",
+  "./assets/cursor-ditto-link-4.png",
+  "./assets/cursor-ditto-link-5.png",
+  "./assets/cursor-ditto-link-6.png",
+  "./assets/cursor-ditto-link-7.png",
+];
+const CURSOR_NORMAL_INTERVAL_MS = 216;
+const CURSOR_LINK_INTERVAL_MS = 133;
+
+function startCursorAnimations() {
+  // Preload every frame so swaps don't trigger network fetches mid-anim.
+  for (const src of [...CURSOR_NORMAL_FRAMES, ...CURSOR_LINK_FRAMES]) {
+    const img = new Image();
+    img.src = src;
+  }
+  const root = document.documentElement;
+  let normalIdx = 0;
+  let linkIdx = 0;
+  setInterval(() => {
+    normalIdx = (normalIdx + 1) % CURSOR_NORMAL_FRAMES.length;
+    root.style.setProperty(
+      "--cursor-default",
+      `url("${CURSOR_NORMAL_FRAMES[normalIdx]}") 1 1, auto`,
+    );
+  }, CURSOR_NORMAL_INTERVAL_MS);
+  setInterval(() => {
+    linkIdx = (linkIdx + 1) % CURSOR_LINK_FRAMES.length;
+    root.style.setProperty(
+      "--cursor-pointer",
+      `url("${CURSOR_LINK_FRAMES[linkIdx]}") 1 1, pointer`,
+    );
+  }, CURSOR_LINK_INTERVAL_MS);
+}
+
 /* ---------- boot ---------- */
 
 function startTimers() {
@@ -593,4 +642,5 @@ function startTimers() {
 document.addEventListener("DOMContentLoaded", () => {
   refresh();
   startTimers();
+  startCursorAnimations();
 });
