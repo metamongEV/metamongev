@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>metamongEV — Beezie EV Pulse</title>
+    <meta name="description" content="Live Beezie claw EV monitor — pulls-to-+EV, average value, BEP, and top grails per pack." />
+    <meta name="theme-color" content="#0a0a0a" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="topbar">
+        <div class="topbar__inner">
+          <a class="brand" href="/" aria-label="metamongEV home">
+            <span class="brand__avatar" role="img" aria-label="metamongEV logo">
+              <img src="./assets/logo.png" alt="" onerror="this.style.display='none'" />
+            </span>
+            <span class="brand__name">metamongEV</span>
+          </a>
+
+          <nav class="topbar__links" aria-label="External resources">
+            <a class="link-pill link-pill--gold" href="https://beezie.com/r/X9P8WVMA" target="_blank" rel="noopener noreferrer">
+              Special 1% Payback Sign-up
+            </a>
+            <a class="link-pill link-pill--with-icon" href="#" aria-disabled="true" data-empty title="metamongEV Telegram chat (coming soon)">
+              <svg class="link-pill__glyph" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21.96 4.84 18.5 19.7c-.26 1.13-.93 1.4-1.88.87l-5.21-3.84-2.51 2.41c-.28.28-.51.51-1.04.51l.37-5.27 9.6-8.67c.42-.37-.09-.58-.65-.21L5.32 12.92.21 11.31c-1.11-.34-1.13-1.11.23-1.64L20.55 2.4c.93-.34 1.74.22 1.41 2.44z"/>
+              </svg>
+              TG
+            </a>
+            <a class="link-pill link-pill--with-icon" href="#" aria-disabled="true" data-empty title="Telegram tracker (coming soon)">
+              <svg class="link-pill__glyph" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21.96 4.84 18.5 19.7c-.26 1.13-.93 1.4-1.88.87l-5.21-3.84-2.51 2.41c-.28.28-.51.51-1.04.51l.37-5.27 9.6-8.67c.42-.37-.09-.58-.65-.21L5.32 12.92.21 11.31c-1.11-.34-1.13-1.11.23-1.64L20.55 2.4c.93-.34 1.74.22 1.41 2.44z"/>
+              </svg>
+              Telegram Tracker
+            </a>
+            <a class="link-pill link-pill--icon" href="https://x.com/metamongEV" target="_blank" rel="noopener noreferrer" aria-label="metamongEV on X">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18.244 2H21.5l-7.35 8.4L22.5 22h-6.8l-5.32-6.88L4.2 22H.93l7.8-8.9L1.5 2h6.89l4.8 6.35L16.4 2h1.844zm-1.22 17.58h1.89L6.92 4h-1.9l11.99 15.58z" />
+              </svg>
+            </a>
+          </nav>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="panel">
+          <div class="panel__head">
+            <div class="panel__eyebrow">EV monitor — Beezie packs</div>
+            <div class="panel__controls">
+              <label class="control control--alarm" for="alarmToggle">
+                <input id="alarmToggle" type="checkbox" />
+                <span>Alarm on +EV</span>
+                <span id="alarmStatus" class="control__status">muted</span>
+              </label>
+              <span class="meta meta--refresh">
+                <span class="meta__label">Refresh</span>
+                <span id="refreshCountdown">10s</span>
+              </span>
+              <span class="meta">
+                <span class="meta__label">Last sync</span>
+                <span id="lastSync">—</span>
+              </span>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="grid grid--beezie">
+              <colgroup>
+                <col class="col--pack" />
+                <col class="col--progress" />
+                <col class="col--pulls" />
+                <col class="col--avg" />
+                <col class="col--ev-pct" />
+                <col class="col--ev-usd" />
+                <col class="col--bep" />
+                <col class="col--price" />
+                <col class="col--buyback" />
+                <col class="col--items" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th class="text-left">Pack</th>
+                  <th class="text-left" title="Distance to BEP — fills when the remaining pool's average crosses break-even.">Progress</th>
+                  <th class="text-right" title="Estimated remaining base-tier pulls before the remaining pool's average value crosses BEP.">Pulls&nbsp;to&nbsp;+EV</th>
+                  <th class="text-right" title="totalSwapValue / stock / 0.9">Avg&nbsp;Value</th>
+                  <th class="text-right" title="(Avg Value − BEP) / BEP">%EV</th>
+                  <th class="text-right" title="Avg Value − BEP">$EV</th>
+                  <th class="text-right" title="Beezie BEP table or 1.14 × price.">BEP</th>
+                  <th class="text-right">Price</th>
+                  <th class="text-right" title="Beezie 90% sell × (1 − 6% swap fee) ≈ 84.6%">Buyback</th>
+                  <th class="text-right">Items</th>
+                </tr>
+              </thead>
+              <tbody id="rows">
+                <tr class="row-empty">
+                  <td colspan="10">Loading Beezie packs…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="panel__foot">
+            <span id="dataState" class="meta meta--state">connecting…</span>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./script.js"></script>
+  </body>
+</html>

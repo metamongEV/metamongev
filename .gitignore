@@ -1,0 +1,23 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code workspace settings (user-specific)
+.claude/
+
+# Node / Vercel
+node_modules/
+.vercel/
+.env
+.env.local
+.env.*.local
+
+# Logs / temp
+*.log
+.tmp/
