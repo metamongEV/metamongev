@@ -29,6 +29,16 @@
   --gold-400: #eab308;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --cursor-default: url("./assets/cursor-ditto.png") 1 1, auto;
+  --cursor-pointer: url("./assets/cursor-ditto.png") 1 1, pointer;
+}
+
+html, body { cursor: var(--cursor-default); }
+a, button, label, summary,
+[role="button"], [role="link"],
+.row-expander, .alarm-btn, .nav-pill, .link-pill, .brand,
+.grid th.sortable {
+  cursor: var(--cursor-pointer);
 }
 
 * {
