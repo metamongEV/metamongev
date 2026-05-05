@@ -30,7 +30,7 @@ const state = {
   defaultExpanded: false,
   lastSyncMs: null,
   countdownDeadline: Date.now() + REFRESH_INTERVAL_MS,
-  alarmEnabled: false,
+  alarmEnabled: true,         // default ON; first user click anywhere unlocks audio
   alarmFiring: false,
   alarmedPacks: new Set(),
 };
@@ -40,8 +40,6 @@ const els = {
   refreshCountdown: document.getElementById("refreshCountdown"),
   lastSync: document.getElementById("lastSync"),
   alarmToggle: document.getElementById("alarmToggle"),
-  alarmStatus: document.getElementById("alarmStatus"),
-  alarmControl: document.querySelector(".control--alarm"),
   dataState: document.getElementById("dataState"),
 };
 
@@ -261,14 +259,12 @@ function playBell() {
 }
 
 function syncAlarmUi() {
-  if (!els.alarmControl) return;
-  els.alarmControl.classList.toggle("is-armed", state.alarmEnabled);
-  els.alarmControl.classList.toggle("is-firing", state.alarmEnabled && state.alarmFiring);
-  if (els.alarmStatus) {
-    if (!state.alarmEnabled) els.alarmStatus.textContent = "muted";
-    else if (state.alarmFiring) els.alarmStatus.textContent = "firing";
-    else els.alarmStatus.textContent = "armed";
-  }
+  if (!els.alarmToggle) return;
+  els.alarmToggle.setAttribute("aria-pressed", state.alarmEnabled ? "true" : "false");
+  els.alarmToggle.classList.toggle("is-firing", state.alarmEnabled && state.alarmFiring);
+  const baseLabel = state.alarmEnabled ? "Alarm on +EV — currently on" : "Alarm on +EV — currently off";
+  const label = state.alarmEnabled && state.alarmFiring ? "Alarm on +EV — firing" : baseLabel;
+  els.alarmToggle.setAttribute("aria-label", label);
 }
 
 function evaluateAlarm() {
@@ -568,9 +564,10 @@ function escapeAttr(s) { return escapeHtml(s); }
 /* ---------- alarm wiring ---------- */
 
 if (els.alarmToggle) {
-  els.alarmToggle.addEventListener("change", () => {
-    state.alarmEnabled = els.alarmToggle.checked;
+  els.alarmToggle.addEventListener("click", () => {
+    state.alarmEnabled = !state.alarmEnabled;
     if (state.alarmEnabled) {
+      // User gesture — unlock the audio context and play a short test bell.
       const ctx = ensureAudioCtx();
       if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
       playBell();

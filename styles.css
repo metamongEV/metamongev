@@ -252,44 +252,68 @@ button {
   cursor: pointer;
 }
 
-.control--alarm {
-  padding: 0.25rem 0.55rem;
+/* Alarm speaker button */
+.alarm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0;
   border: 1px solid var(--border-700);
+  background: var(--bg-900);
+  color: var(--text-400);
   border-radius: 4px;
-  background: rgba(38, 38, 38, 0.4);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s, transform 0.1s;
 }
 
-.control--alarm:hover {
-  border-color: var(--border-600);
+.alarm-btn:hover {
+  border-color: var(--border-500);
+  background: var(--bg-800);
 }
 
-.control__status {
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-600);
-  border-left: 1px solid var(--border-800);
-  padding-left: 0.45rem;
-  margin-left: 0.1rem;
+.alarm-btn:active { transform: translateY(1px); }
+.alarm-btn:focus-visible {
+  outline: 2px solid rgba(52, 211, 153, 0.5);
+  outline-offset: 2px;
 }
 
-.control--alarm.is-armed .control__status {
+.alarm-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: currentColor;
+}
+
+/* Default: only the relevant icon is shown for the current state. */
+.alarm-icon--off { display: none; }
+
+.alarm-btn[aria-pressed="false"] {
+  color: var(--text-500);
+}
+.alarm-btn[aria-pressed="false"] .alarm-icon--on  { display: none; }
+.alarm-btn[aria-pressed="false"] .alarm-icon--off { display: inline-block; }
+
+.alarm-btn[aria-pressed="true"] {
   color: var(--emerald-400);
+  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(52, 211, 153, 0.08);
+}
+.alarm-btn[aria-pressed="true"]:hover {
+  border-color: var(--emerald-400);
+  background: rgba(52, 211, 153, 0.14);
 }
 
-.control--alarm.is-firing {
+.alarm-btn.is-firing {
+  color: var(--gold-300);
   border-color: var(--gold-400);
-  background: rgba(234, 179, 8, 0.1);
+  background: rgba(234, 179, 8, 0.14);
   animation: alarm-pulse 1s ease-in-out infinite;
 }
 
-.control--alarm.is-firing .control__status {
-  color: var(--gold-300);
-}
-
 @keyframes alarm-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.45); }
-  50% { box-shadow: 0 0 0 6px rgba(234, 179, 8, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.55); }
+  50%      { box-shadow: 0 0 0 6px rgba(234, 179, 8, 0);    }
 }
 
 .meta {
