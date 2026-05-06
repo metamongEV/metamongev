@@ -35,7 +35,6 @@ const state = {
   countdownDeadline: Date.now() + REFRESH_INTERVAL_MS,
   alarmEnabled: true,         // default ON; first user click anywhere unlocks audio
   alarmFiring: false,
-  alarmedPacks: new Set(),
 };
 
 const els = {
@@ -273,24 +272,16 @@ function syncAlarmUi() {
 function evaluateAlarm() {
   if (!state.alarmEnabled) {
     state.alarmFiring = false;
-    state.alarmedPacks.clear();
     syncAlarmUi();
     return;
   }
-  let firing = false;
-  for (const pack of state.packs) {
-    const id = pack.id;
-    if (pack.active && pack._stats.ev > 0) {
-      firing = true;
-      if (!state.alarmedPacks.has(id)) {
-        playBell();
-        state.alarmedPacks.add(id);
-      }
-    } else {
-      state.alarmedPacks.delete(id);
-    }
-  }
-  state.alarmFiring = firing;
+  // Ring on every refresh tick (every 10s, since refresh() calls us)
+  // for as long as ANY active pack is +EV. The browser still needs a prior
+  // user gesture for the audio context to actually emit sound; once unlocked
+  // it stays unlocked for the rest of the page lifetime.
+  const anyPositive = state.packs.some((p) => p.active && p._stats.ev > 0);
+  if (anyPositive) playBell();
+  state.alarmFiring = anyPositive;
   syncAlarmUi();
 }
 
@@ -588,7 +579,24 @@ function makeSessionId() {
   }
   return "s-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
 }
-const PRESENCE_SID = makeSessionId();
+
+/* Persist the session id in localStorage so the same browser-profile keeps
+   one identity across reloads and multi-tab. ZADD on the server is keyed by
+   sid, so reusing it just refreshes the score and doesn't grow the count.
+   localStorage might be unavailable (privacy mode, embedded WebView, etc.) —
+   fall back to a per-page-load id in that case. */
+const PRESENCE_SID = (() => {
+  const KEY = "metamongev:sid";
+  try {
+    const existing = localStorage.getItem(KEY);
+    if (existing) return existing;
+    const fresh = makeSessionId();
+    localStorage.setItem(KEY, fresh);
+    return fresh;
+  } catch {
+    return makeSessionId();
+  }
+})();
 
 function applyPresenceCount(n, isError) {
   const widget = document.getElementById("presenceWidget");
