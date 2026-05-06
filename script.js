@@ -5,8 +5,11 @@
 
 const CLAWS_URL = "/api/claws";
 const PHYGITALS_URL = "/api/phygitals";
+const PRESENCE_URL = "/api/presence";
 const REFRESH_INTERVAL_MS = 10_000;
 const COUNTDOWN_TICK_MS = 1_000;
+const PRESENCE_HEARTBEAT_MS = 30_000;
+const PRESENCE_POLL_MS = 15_000;
 
 /* Hardcoded BEP thresholds (microUSDC) — same map beezie-giyu uses. */
 const BEP_TABLE = {
@@ -577,6 +580,62 @@ if (els.alarmToggle) {
   syncAlarmUi();
 }
 
+/* ---------- presence (online viewer count) ---------- */
+
+function makeSessionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "s-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+}
+const PRESENCE_SID = makeSessionId();
+
+function applyPresenceCount(n, isError) {
+  const widget = document.getElementById("presenceWidget");
+  const countEl = document.getElementById("onlineCount");
+  if (!widget || !countEl) return;
+  if (isError) {
+    widget.classList.add("is-down");
+    return;
+  }
+  widget.classList.remove("is-down");
+  countEl.textContent = Number.isFinite(n) ? n.toLocaleString("en-US") : "—";
+}
+
+async function presenceHeartbeat() {
+  try {
+    const resp = await fetch(PRESENCE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sid: PRESENCE_SID }),
+      cache: "no-store",
+      keepalive: true,
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    applyPresenceCount(Number(data?.count));
+  } catch {
+    applyPresenceCount(null, true);
+  }
+}
+
+async function presencePoll() {
+  try {
+    const resp = await fetch(PRESENCE_URL, { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    applyPresenceCount(Number(data?.count));
+  } catch {
+    applyPresenceCount(null, true);
+  }
+}
+
+function startPresence() {
+  presenceHeartbeat();                        // immediately announce + fetch first count
+  setInterval(presenceHeartbeat, PRESENCE_HEARTBEAT_MS);
+  setInterval(presencePoll,      PRESENCE_POLL_MS);
+}
+
 /* ---------- animated Ditto cursors ---------- */
 /* Native frame rates from the .ani files: Normal=216ms x 2 frames,
    Link=133ms x 8 frames. CSS doesn't animate cursors, so we swap the
@@ -643,4 +702,5 @@ document.addEventListener("DOMContentLoaded", () => {
   refresh();
   startTimers();
   startCursorAnimations();
+  startPresence();
 });

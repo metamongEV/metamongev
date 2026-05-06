@@ -60,11 +60,29 @@ class MetamongHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/phygitals":
             self.proxy_phygitals()
             return
+        if parsed.path == "/api/presence":
+            self.mock_presence()
+            return
         super().do_GET()
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/presence":
+            # Drain any body so the connection closes cleanly
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            if length:
+                try:
+                    self.rfile.read(length)
+                except Exception:
+                    pass
+            self.mock_presence()
+            return
+        self.send_response(405)
+        self.end_headers()
 
     def do_HEAD(self):
         parsed = urlparse(self.path)
-        if parsed.path in ("/api/claws", "/api/phygitals"):
+        if parsed.path in ("/api/claws", "/api/phygitals", "/api/presence"):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-store")
@@ -72,6 +90,15 @@ class MetamongHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             return
         super().do_HEAD()
+
+    def mock_presence(self):
+        """Local dev: return mock count of 1 (just you). The real presence
+        counter only works on the deployed Vercel app where Upstash creds are
+        injected as env vars. Run `vercel env pull` if you want real data
+        locally."""
+        import time as _t
+        body = json.dumps({"count": 1, "timestamp": int(_t.time() * 1000), "mock": True}).encode("utf-8")
+        self._send_json(200, body)
 
     def _send_json(self, status, payload):
         self.send_response(status)
